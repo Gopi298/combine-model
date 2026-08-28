@@ -3,10 +3,62 @@ import pickle
 import numpy as np
 import pandas as pd
 import streamlit as st
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
 
 st.set_page_config(
     page_title="Multiple Health Prediction System", layout="wide"
 )
+
+
+# Auto-train and generate models if missing in deployment
+def ensure_models_exist():
+    if not os.path.exists("diabetes_model.pkl") or not os.path.exists(
+        "diabetes_scaler.pkl"
+    ):
+        if os.path.exists("diabetes.csv"):
+            df = pd.read_csv("diabetes.csv")
+            X = df.drop("Outcome", axis=1)
+            y = df["Outcome"]
+            X_train, _, y_train, _ = train_test_split(
+                X, y, test_size=0.2, random_state=42, stratify=y
+            )
+            scaler = StandardScaler()
+            X_train_scaled = scaler.fit_transform(X_train)
+            model = RandomForestClassifier(
+                n_estimators=200, max_depth=10, random_state=42
+            )
+            model.fit(X_train_scaled, y_train)
+            with open("diabetes_model.pkl", "wb") as f:
+                pickle.dump(model, f)
+            with open("diabetes_scaler.pkl", "wb") as f:
+                pickle.dump(scaler, f)
+
+    if not os.path.exists("heart_model.pkl") or not os.path.exists(
+        "heart_scaler.pkl"
+    ):
+        if os.path.exists("heart_disease_data.csv"):
+            df = pd.read_csv("heart_disease_data.csv")
+            X = df.drop("target", axis=1)
+            y = df["target"]
+            X_train, _, y_train, _ = train_test_split(
+                X, y, test_size=0.2, random_state=42, stratify=y
+            )
+            scaler = StandardScaler()
+            X_train_scaled = scaler.fit_transform(X_train)
+            model = RandomForestClassifier(
+                n_estimators=200, max_depth=8, random_state=42
+            )
+            model.fit(X_train_scaled, y_train)
+            with open("heart_model.pkl", "wb") as f:
+                pickle.dump(model, f)
+            with open("heart_scaler.pkl", "wb") as f:
+                pickle.dump(scaler, f)
+
+
+# Ensure models exist on startup
+ensure_models_exist()
 
 # Sidebar Navigation
 st.sidebar.title("Navigation Menu")
@@ -120,7 +172,11 @@ elif page_choice == "Heart Failure Prediction":
         age_h = st.number_input(
             "Age", min_value=1, max_value=120, value=50, key="h_age"
         )
-        sex = st.selectbox("Sex", options=[1, 0], format_func=lambda x: "Male" if x == 1 else "Female")
+        sex = st.selectbox(
+            "Sex",
+            options=[1, 0],
+            format_func=lambda x: "Male" if x == 1 else "Female",
+        )
         cp = st.selectbox(
             "Chest Pain Type (cp)",
             options=[0, 1, 2, 3],
