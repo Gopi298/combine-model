@@ -20,7 +20,7 @@ MODEL_DIR = os.path.join(BASE_DIR, "models")
 os.makedirs(MODEL_DIR, exist_ok=True)
 
 # -------------------------------------------------------------
-# AUTOMATIC MODEL TRAINING & LOADING (100% ACCURACY TARGET)
+# AUTOMATIC MODEL TRAINING & LOADING (FIXED PANDAS DTYPE ISSUE)
 # -------------------------------------------------------------
 @st.cache_resource
 def build_and_load_models():
@@ -64,21 +64,29 @@ def build_and_load_models():
     if os.path.exists(house_path):
         models['house'] = pickle.load(open(house_path, 'rb'))
 
-    # 4. Chronic Kidney Disease Model
+    # 4. Chronic Kidney Disease Model (FIXED)
     kidney_path = os.path.join(MODEL_DIR, "kidney_model.pkl")
     if not os.path.exists(kidney_path) and os.path.exists(os.path.join(BASE_DIR, "kidney_disease.csv")):
         df = pd.read_csv(os.path.join(BASE_DIR, "kidney_disease.csv")).drop('id', axis=1, errors='ignore')
         df['classification'] = df['classification'].replace({'ckd\t': 'ckd', 'ckd': 1, 'notckd': 0})
+        
+        # Clean numeric string columns
         for col in ['pcv', 'wc', 'rc']:
             if col in df.columns:
                 df[col] = pd.to_numeric(df[col].astype(str).str.strip().str.replace('\t', ''), errors='coerce')
+        
+        # Handle string encoding vs numeric imputation separately to avoid Pandas dtype error
         for col in df.columns:
-            if df[col].dtype == 'object':
-                df[col] = LabelEncoder().fit_transform(df[col].astype(str).str.strip().str.replace('\t', ''))
+            if col == 'classification':
+                continue
+            if df[col].dtype == 'object' or str(df[col].dtype) == 'string':
+                df[col] = df[col].astype(str).str.strip().str.replace('\t', '')
+                df[col] = LabelEncoder().fit_transform(df[col])
             else:
                 df[col] = df[col].fillna(df[col].median())
+
         X = df.drop('classification', axis=1)
-        y = df['classification']
+        y = df['classification'].astype(int)
         model = ExtraTreesClassifier(n_estimators=100, random_state=42).fit(X, y)
         pickle.dump({'model': model, 'cols': list(X.columns)}, open(kidney_path, 'wb'))
 
@@ -145,7 +153,6 @@ def render_speedometer(score_percent, title="Risk Indicator Score"):
 def main():
     models = build_and_load_models()
 
-    # Top Navbar Implementation
     menu_options = [
         "Dashboard",
         "Heart Disease",
@@ -165,7 +172,7 @@ def main():
     # -------------------------------------------------------------
     if selected_tab == "Dashboard":
         st.title("🩺 Medical & Diagnostic Predictive Suite")
-        st.write("Unified analytics platform equipped with 100% accuracy model training and Plotly speedometer risk gauges.")
+        st.write("Unified analytics platform equipped with trained models and Plotly speedometer risk gauges.")
 
         col1, col2, col3 = st.columns(3)
         col1.metric("Loaded Models", f"{len(models)} / 6")
@@ -205,7 +212,7 @@ def main():
                 prob = models['heart']['model'].predict_proba([features])[0][1] * 100
                 pred = models['heart']['model'].predict([features])[0]
             else:
-                prob = 75.0 if cholesterol > 240 else 20.0
+                prob = 75.0 if chol > 240 else 20.0
                 pred = 1 if prob > 50 else 0
 
             c1, c2 = st.columns([1, 1])
