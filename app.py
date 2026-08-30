@@ -20,7 +20,7 @@ MODEL_DIR = os.path.join(BASE_DIR, "models")
 os.makedirs(MODEL_DIR, exist_ok=True)
 
 # -------------------------------------------------------------
-# AUTOMATIC MODEL TRAINING & LOADING (FIXED PANDAS DTYPE ISSUE)
+# AUTOMATIC MODEL TRAINING & LOADING (FIXED TARGET MAPPING)
 # -------------------------------------------------------------
 @st.cache_resource
 def build_and_load_models():
@@ -64,21 +64,23 @@ def build_and_load_models():
     if os.path.exists(house_path):
         models['house'] = pickle.load(open(house_path, 'rb'))
 
-    # 4. Chronic Kidney Disease Model (FIXED)
+    # 4. Chronic Kidney Disease Model (FIXED TARGET MAPPING)
     kidney_path = os.path.join(MODEL_DIR, "kidney_model.pkl")
     if not os.path.exists(kidney_path) and os.path.exists(os.path.join(BASE_DIR, "kidney_disease.csv")):
         df = pd.read_csv(os.path.join(BASE_DIR, "kidney_disease.csv"))
         if 'id' in df.columns:
             df = df.drop(columns=['id'])
 
-        df['classification'] = df['classification'].replace({'ckd\t': 'ckd', 'ckd': 1, 'notckd': 0})
+        # Robust string cleaning & mapping for classification target
+        df['classification'] = df['classification'].astype(str).str.strip().str.replace('\t', '')
+        df['classification'] = df['classification'].map({'ckd': 1, 'notckd': 0}).fillna(0).astype(int)
 
-        # Convert numeric columns formatted as strings
+        # Convert numeric columns stored as messy strings
         for num_col in ['pcv', 'wc', 'rc']:
             if num_col in df.columns:
                 df[num_col] = pd.to_numeric(df[num_col].astype(str).str.strip().str.replace('\t', ''), errors='coerce')
 
-        # Encode text/categorical columns first
+        # Encode feature text columns
         for col in df.columns:
             if col == 'classification':
                 continue
@@ -91,7 +93,7 @@ def build_and_load_models():
         df[num_cols] = df[num_cols].fillna(df[num_cols].median())
 
         X = df.drop('classification', axis=1)
-        y = df['classification'].astype(int)
+        y = df['classification']
         model = ExtraTreesClassifier(n_estimators=100, random_state=42).fit(X, y)
         pickle.dump({'model': model, 'cols': list(X.columns)}, open(kidney_path, 'wb'))
 
