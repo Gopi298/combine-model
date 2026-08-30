@@ -67,23 +67,28 @@ def build_and_load_models():
     # 4. Chronic Kidney Disease Model (FIXED)
     kidney_path = os.path.join(MODEL_DIR, "kidney_model.pkl")
     if not os.path.exists(kidney_path) and os.path.exists(os.path.join(BASE_DIR, "kidney_disease.csv")):
-        df = pd.read_csv(os.path.join(BASE_DIR, "kidney_disease.csv")).drop('id', axis=1, errors='ignore')
+        df = pd.read_csv(os.path.join(BASE_DIR, "kidney_disease.csv"))
+        if 'id' in df.columns:
+            df = df.drop(columns=['id'])
+
         df['classification'] = df['classification'].replace({'ckd\t': 'ckd', 'ckd': 1, 'notckd': 0})
-        
-        # Clean numeric string columns
-        for col in ['pcv', 'wc', 'rc']:
-            if col in df.columns:
-                df[col] = pd.to_numeric(df[col].astype(str).str.strip().str.replace('\t', ''), errors='coerce')
-        
-        # Handle string encoding vs numeric imputation separately to avoid Pandas dtype error
+
+        # Convert numeric columns formatted as strings
+        for num_col in ['pcv', 'wc', 'rc']:
+            if num_col in df.columns:
+                df[num_col] = pd.to_numeric(df[num_col].astype(str).str.strip().str.replace('\t', ''), errors='coerce')
+
+        # Encode text/categorical columns first
         for col in df.columns:
             if col == 'classification':
                 continue
-            if df[col].dtype == 'object' or str(df[col].dtype) == 'string':
-                df[col] = df[col].astype(str).str.strip().str.replace('\t', '')
-                df[col] = LabelEncoder().fit_transform(df[col])
-            else:
-                df[col] = df[col].fillna(df[col].median())
+            if pd.api.types.is_object_dtype(df[col]) or pd.api.types.is_string_dtype(df[col]):
+                clean_s = df[col].astype(str).str.strip().str.replace('\t', '')
+                df[col] = LabelEncoder().fit_transform(clean_s)
+
+        # Fill missing values only on numeric columns
+        num_cols = df.select_dtypes(include=['number']).columns
+        df[num_cols] = df[num_cols].fillna(df[num_cols].median())
 
         X = df.drop('classification', axis=1)
         y = df['classification'].astype(int)
@@ -398,7 +403,7 @@ def main():
     # -------------------------------------------------------------
     elif selected_tab == "PDF Knowledge Center":
         st.header("📄 Embedded Diagnostic Reference Document")
-        
+
         pdf_file = "Parkinson_s+disease+(PD)+Information.pdf"
         pdf_path = os.path.join(BASE_DIR, pdf_file)
 
@@ -408,10 +413,10 @@ def main():
                 reader = PyPDF2.PdfReader(f)
                 num_pages = len(reader.pages)
                 st.write(f"**Total Document Pages:** {num_pages}")
-                
+
                 selected_page = st.slider("Select Page to View:", 1, num_pages, 1)
                 text = reader.pages[selected_page - 1].extract_text()
-                
+
                 st.markdown(f"### Page {selected_page} Content:")
                 st.info(text if text else "No printable text detected on this page.")
         else:
